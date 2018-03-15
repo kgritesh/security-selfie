@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>Face tracker</title>
+		<meta charset="utf-8">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
+          integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+		<style>
+			@import url(https://fonts.googleapis.com/css?family=Lato:300italic,700italic,300,700);
+
+			body {
+				font-family: 'Lato';
+				background-color: #f0f0f0;
+				margin: 0px auto;
+				max-width: 1150px;
+      }
+
+      #blinkLabel {
+        color: #28a745;
+        margin: 20px auto;
+      }
+
+      #startbutton {
+        margin: 20px auto;
+      }
+
+      .help-info {
+        margin-top: 40px;
+        text-align: justify;
+        background-color: #f5f5f5;
+        border: 1px solid #e3e3e3;
+        border-radius: 4px;
+        padding: 20px;
+      }
+
+			#videoel {
+				-o-transform : scaleX(-1);
+				-webkit-transform : scaleX(-1);
+				transform : scaleX(-1);
+				-ms-filter : fliph; /*IE*/
+				filter : fliph; /*IE*/
+			}
+			.hide {
+				display : none;
+			}
+
+			.nohide {
+				display : block;
+			}
+    </style>
+    <script src="https://cdn.webrtc-experiment.com/MediaStreamRecorder.js"> </script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+	</head>
+	<body>
+    <div class="container" style="max-width: 960px;">
+      <div class="jumbotron" style="margin: 20px auto; padding: 20px">
+        <h3 class="display-5">Eye Blink Detection Test</h1>
+        <p class="lead">This is an example webapp to demonstrate the ability to perform eye blink detection on video recorded using webcam</p>
+      </div>
+      <div class="row">
+        <div class="col col-md-6">
+            <div class="text-center">
+                <h4 class="text-center hide" id="blinkLabel"> Blink Your Eyes </h4>
+                <video id="videoel" width="400" height="300" preload="auto" loop playsinline autoplay></video>
+                <button type="button" class="btn btn-primary btn-lg" id="startbutton" disabled="true">Waiting</button>
+            </div>
+        </div>
+        <div class="col col-md-6">
+          <div class="help-info">
+              Whenever you are ready click start below. In random intervals you will be prompted to blink your eyes, which you must do.
+              After a 7 second video recording, system will process and validate whether you blinked at the requested interval or not.
+          </div>
+        </div>
+      </div>
+      <div class="modal" tabindex="-1" role="dialog" id="webcamFailed">
+          <div class="modal-dialog" role="document">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">Failed to capture Webcam</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div class="modal-body">
+                <p>
+                  There was some problem trying to capture your webcamera, please check that your browser supports WebRTC or allow permission to access
+                  webcam
+                </p>
+              </div>
+            </div>
+          </div>
+      </div>
+      <div class="modal" tabindex="-1" role="dialog" id="processing">
+          <div class="modal-dialog" role="document">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">Processing Video...</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+            </div>
+          </div>
+      </div>
+
+    </div>
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
+    <script>
+      var vid = document.getElementById('videoel');
+      var vid_width = vid.width;
+      var vid_height = vid.height;
+      var videoStart = null;
+      var blinks = [];
+      var capturedBlinks = [];
+      var nextInterval = 0;
+      var mediaRecorder = null;
+      var recordedVideo = null;
+
+
+      /*********** Setup of video/webcam and checking for webGL support *********/
+      function show(elem) {
+        elem.className = elem.className.replace('hide', 'nohide');
+      }
+
+      function hide(elem) {
+        if (elem.className.includes('nohide')) {
+          elem.className = elem.className.replace('nohide', 'hide');
+        } else {
+          elem.className = elem.className += ' hide';
+        }
+      }
+
+      function getRandomInt(min, max) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+      }
+
+      function getRandomSubarray(arr, size) {
+        var shuffled = arr.slice(0), i = arr.length, min = i - size, temp, index;
+        while (i-- > min) {
+            index = Math.floor((i + 1) * Math.random());
+            temp = shuffled[index];
+            shuffled[index] = shuffled[i];
+            shuffled[i] = temp;
+        }
+        return shuffled.slice(min).sort();
+      }
+
+      function enablestart() {
+        console.log('Enable Start');
+        var startbutton = document.getElementById('startbutton');
+        startbutton.innerHTML = 'Start';
+        startbutton.onclick = startVideo;
+        startbutton.disabled = null;
+      }
+
+      function adjustVideoProportions() {
+        // resize overlay and video if proportions of video are not 4:3
+        // keep same height, just change width
+        var proportion = vid.videoWidth/vid.videoHeight;
+        vid_width = Math.round(vid_height * proportion);
+        vid.width = vid_width;
+      }
+
+      function gumSuccess( stream ) {
+        // add camera stream if getUserMedia succeeded
+        if ("srcObject" in vid) {
+          vid.srcObject = stream;
+        } else {
+          vid.src = (window.URL && window.URL.createObjectURL(stream));
+        }
+        vid.onloadedmetadata = function() {
+          adjustVideoProportions();
+          vid.play();
+        }
+        vid.onresize = function() {
+          adjustVideoProportions();
+        }
+        mediaRecorder = new MediaStreamRecorder(stream);
+        mediaRecorder.mimeType = 'video/mp4';
+      }
+
+      function gumFail() {
+        console.log('Failed to get camera permission');
+        $('#webcamFailed').modal();
+      }
+      navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia;
+      window.URL = window.URL || window.webkitURL || window.msURL || window.mozURL;
+
+      // set up video
+      if (navigator.mediaDevices) {
+        navigator.mediaDevices.getUserMedia({video : true}).then(gumSuccess).catch(gumFail);
+      } else if (navigator.getUserMedia) {
+        navigator.getUserMedia({video : true}, gumSuccess, gumFail);
+      } else {
+        $('#webcamFailed').modal();
+      }
+      vid.addEventListener('canplay', enablestart, false);
+      function startVideo() {
+        // start video
+        mediaRecorder.ondataavailable = function(blob) {
+          recordedVideo = blob;
+          submitVideo();
+          mediaRecorder.ondataavailable = () => {};
+          mediaRecorder.stop();
+        };
+
+        blinks = getRandomSubarray([...Array(6).keys()], getRandomInt(1, 3));
+        console.log('Blinks at ', blinks );
+        videoStart = Math.floor(Date.now() / 1000);
+        vid.play();
+        mediaRecorder.start(8000);
+        setTimeout(enableBlink, (blinks[nextInterval] + 1) * 1000);
+        nextInterval += 1;
+        setTimeout(stopVideo, 7000);
+        var startbutton = document.getElementById('startbutton');
+        hide(startbutton);
+      }
+
+      function stopVideo() {
+        $('#processing').modal();
+        vid.pause();
+      }
+
+      function submitVideo() {
+        const formData = new FormData();
+        formData.append('blinks', capturedBlinks.join(','));
+        formData.append('video', recordedVideo);
+        axios.post('/upload', formData, {
+          headers: {'content-type': 'multipart/form-data'}
+        }).then(function(response) {
+          if (response.data.status == 'success') {
+            $('#processing .modal-title').text('Eye Blink Detected successfully');
+          } else {
+            $('#processing .modal-title').text('Eye Blink Detection Failed');
+          }
+        }).catch(function(error){
+          console.error('Unable to submit video');
+        });
+      }
+
+      function enableBlink() {
+        const timeDiff = Math.floor(Date.now() / 1000) - videoStart
+        console.log('Captured blink at ', timeDiff);
+        capturedBlinks.push(timeDiff);
+        const next = blinks[nextInterval] - blinks[nextInterval - 1];
+        show(document.getElementById('blinkLabel'));
+        setTimeout(() => {
+          hide(document.getElementById('blinkLabel'));
+        }, 1500);
+        if (nextInterval < blinks.length)
+          setTimeout(enableBlink, next * 1000);
+        nextInterval += 1;
+      }
+    </script>
+	</body>
+</html>
